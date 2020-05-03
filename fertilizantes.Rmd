@@ -1,0 +1,382 @@
+---
+title: "Fertilizantes"
+output: pdf_document
+---
+
+**Nome:** Matheus Amaral Moes  
+**Disciplina:**  Análise de Séries Temporais  
+**Professor:** Alvaro Villarinho  
+**Matrícula:**  
+  
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Opções para geração do PDF
+knitr::opts_chunk$set(
+  echo = TRUE,
+  comment = "",
+  fig.width = 7,
+  fig.height = 4
+  )
+
+# Carregar Bibliotecas
+library(readxl)
+library(ggplot2)
+library(tseries)
+library(forecast)
+library(seasonal)
+library(urca)
+```
+
+### Load Data
+
+
+```{r cars}
+df = read_excel("Fertilizantes.xlsx")
+# Converter para timeseries com frequencia mensal
+ts.total = ts(df$consumo, frequency = 12, start = c(1998,1))
+
+# Separar em treino e teste
+ts.train = window(ts.total,end = c(2017,12))
+ts.test = window(ts.total, start = c(2018, 1))
+```
+
+## Plot data
+
+```{r}
+autoplot(ts.total) + ggtitle("Fertilizantes Entregues ao mercado")+
+  ylab("mil toneladas") + xlab('Ano')
+```
+```{r}
+lts.total = log(ts.total)
+lambda = BoxCox.lambda(ts.total)
+boxts.total = BoxCox(ts.total, lambda = lambda)
+cbind('Regular' = ts.total, 'Log' = lts.total, 'BoxCox' = boxts.total) %>%
+  autoplot(facets = TRUE) + ylab("mil toneladas") + xlab('Ano')
+  
+
+```
+
+```{r}
+ggseasonplot(ts.total, year.labels = TRUE, year.label.left = TRUE)+
+  ggtitle("Entrega ao Mercado") +
+  ylab("Entrega ao mercado em mil toneladas") + xlab("Mês")
+
+ggseasonplot(ts.total, polar=TRUE) +
+  ylab("Entrega ao mercado em mil toneladas") +
+  ggtitle("Entrega ao Mercado")
+```
+
+```{r}
+boxplot(ts.total~cycle(ts.total),xlab="meses", ylab = "Mil Toneladas" ,
+        col="blue", main ="Boxplot-Entrega de Fertilizantes-BR-1998-2019")
+```
+
+## Lag Plot
+Indica a sozanalidade a cada 12 meses
+
+```{r}
+gglagplot(ts.total)
+```
+
+## Auto Correlation Function (AFC) e Partial Auto Correlation Function (PACF)
+
+```{r}
+# ACF
+ggAcf(ts.total)
+# PACF
+ggPacf(ts.total)
+```
+
+## Decomposição
+
+```{r, eval=FALSE, echo = FALSE}
+# Decomposicaco classica
+ts.total %>% decompose(type="multiplicative") %>%
+  autoplot() + xlab("Year") +
+  ggtitle("Classical multiplicative decomposition")
+
+# Metodo X11
+ts.total %>% seas(x11="") -> fit
+autoplot(fit) +
+  ggtitle("X11 decomposition")
+
+# Metood X11 ajustada pela sazonalidade
+autoplot(ts.total, series="Data") +
+  autolayer(trendcycle(fit), series="Trend") +
+  autolayer(seasadj(fit), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Serie ajustada pela sazonalidade pelo X11") +
+  scale_colour_manual(values=c("gray","blue","red"),
+             breaks=c("Data","Seasonally Adjusted","Trend"))
+
+# Seasonal Extraction in ARIMA Time Series (SEATS)
+ts.total %>% seas() %>%
+autoplot() +
+  ggtitle("SEATS decomposition of electrical equipment index")
+
+# Seasonal and Trend decomposition using Loess (STL)
+ts.total %>%
+  stl(t.window=13, s.window="periodic", robust=TRUE) %>%
+  autoplot()
+```
+
+## Teste Unitário
+
+```{r}
+ts.total %>% ur.kpss() %>% summary()
+
+ts.total %>% diff() %>% ur.kpss() %>% summary()
+
+# Numero de diferenciacoes para estacionariedade
+ndiffs(ts.total)
+
+```
+## Modelos
+```{r}
+plot_forecast = function(modelo, nome_modelo, train_set, test_set, tslm = FALSE){
+  if (tslm){
+    modelo = fitted(modelo)
+  }
+  autoplot(train_set) +
+  autolayer(modelo, series = paste("Previsão", nome_modelo)) +
+  autolayer(test_set, series = "Realizado") + 
+  xlab("Data") +
+  ylab("Consumo") +
+  ggtitle("Fertilizantes") +
+  guides(colour = guide_legend(title = "Série"))
+}
+```
+
+### Transformação Box Cox
+
+### Naive
+
+```{r}
+fit.naive = naive(ts.train, h = 21)
+
+plot_forecast(fit.naive, 'Naive', ts.train, ts.test)
+
+checkresiduals(fit.naive)
+
+accuracy(fit.naive, ts.test)
+
+ts.test %>% tsCV(forecastfunction=naive, drift=TRUE, h=1) -> e
+# RMSE
+e^2 %>% mean(na.rm=TRUE) %>% sqrt()
+
+# Cross Validation para diferentes horizontes de previsão
+e <- tsCV(ts.total, forecastfunction=naive, h=15)
+# Compute the MSE values and remove missing values
+mse <- colMeans(e^2, na.rm = T)
+# Plot the MSE values against the forecast horizon
+data.frame(h = 1:15, MSE = mse) %>%
+  ggplot(aes(x = h, y = MSE)) + geom_point()
+```
+
+### Seasonal Naive
+
+```{r}
+fit.seasonal_naive = snaive(ts.train, h = 21)
+
+plot_forecast(fit.seasonal_naive, 'Seasonal Naive', ts.train, ts.test)
+
+checkresiduals(fit.seasonal_naive)
+
+accuracy(fit.seasonal_naive, ts.test)
+
+
+```
+
+### Drift Method
+
+```{r}
+fit.drift = rwf(ts.train, h = 21, drift=TRUE)
+
+plot_forecast(fit.drift, 'Drift Method', ts.train, ts.test)
+
+checkresiduals(fit.drift)
+
+accuracy(fit.drift, ts.test)
+
+```
+
+### Suavização Exponencial
+
+```{r}
+fit.ses = ses(ts.train, h = 21)
+
+plot_forecast(fit.ses, 'Suavização Exponencial', ts.train, ts.test)
+
+checkresiduals(fit.ses)
+
+accuracy(fit.ses, ts.test)
+```
+
+### Holt
+
+```{r}
+fit.holt = holt(ts.train, damped = TRUE, phi = 0.9, alpha = 0.97, beta = 0.7, h = 21)
+
+plot_forecast(fit.holt, 'Holt', ts.train, ts.test)
+
+checkresiduals(fit.holt)
+
+accuracy(fit.holt, ts.test)
+```
+
+### Holt Winther Aditivo
+
+```{r}
+fit.HWA = hw(ts.train, seasonal = "additive", h = 21)
+
+plot_forecast(fit.HWA, 'HW Aditivo', ts.train, ts.test)
+
+checkresiduals(fit.HWA)
+
+accuracy(fit.HWA, ts.test)
+```
+
+
+### Holt Winther Multiplicativo
+
+```{r}
+fit.HWM <- hw(ts.train, seasonal = "multiplicative", h = 21)
+
+plot_forecast(fit.HWM, 'HW Multiplicativo', ts.train, ts.test)
+
+checkresiduals(fit.HWM)
+
+accuracy(fit.HWM, ts.test)
+
+```
+
+```{r}
+fit = ets(ts.total)
+
+summary(fit)
+
+autoplot(fit)
+
+cbind('Residuals' = residuals(fit),
+      'Forecast errors' = residuals(fit,type='response')) %>%
+  autoplot(facet=TRUE) + xlab("Year") + ylab("")
+
+fit %>% forecast(h=21) %>%
+  autoplot() +
+  ylab("Fertilizantes")
+```
+
+### Dummy
+
+```{r}
+fit.dummy <- tslm(ts.total ~ trend + season + bizdays(ts.total) + easter(ts.total))
+
+plot_forecast(fit.dummy, 'HW Multiplicativo', ts.train, ts.test, tslm = TRUE)
+
+checkresiduals(fit.dummy)
+
+accuracy(fitted(fit.dummy), ts.test)
+```
+
+### Fourier
+
+```{r}
+fit.fourier <- tslm(ts.total ~ trend + bizdays(ts.total) + fourier(ts.total, K = 6) + easter(ts.total))
+
+plot_forecast(fit.fourier, 'HW Multiplicativo', ts.train, ts.test, tslm = TRUE)
+
+checkresiduals(fit.fourier)
+
+accuracy(fitted(fit.fourier), ts.test)
+```
+
+### Arima nao sasonal
+
+```{r}
+arima.ts_ns <- auto.arima(ts.train, seasonal = FALSE)
+
+plot_forecast(arima.ts_ns, 'HW Multiplicativo', ts.train, ts.test, tslm = TRUE)
+
+ts.train %>%
+  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE) %>%
+  residuals() %>% ggtsdisplay()
+
+fit.Arima <- ts.train %>%
+  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE)
+
+checkresiduals(fit.Arima)
+```
+
+### Arima sasonal
+
+```{r}
+arima.ts_s <- auto.arima(ts.train)
+
+
+ts.train %>%
+  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE) %>%
+  residuals() %>% ggtsdisplay()
+
+fit.Arima <- ts.train %>%
+  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE)
+
+checkresiduals(fit.Arima)
+
+```
+
+### ARIMA com variavel
+
+```{r}
+
+arima.ts_s_xreg = auto.arima(ts.train, xreg =cbind('bizdays' = bizdays(ts.train))
+                       )
+
+arima.ts
+
+```
+
+### ARIMA Fourier
+
+```{r}
+arima.ts_fourier = auto.arima(ts.train, seasonal = FALSE,
+                xreg =cbind('bizdays'=bizdays(ts.train), 'fourier' = fourier(ts.train, K = 6))
+                              )
+
+arima.ts_fourier
+```
+
+```{r}
+prev.Arima <- fit.Arima %>% forecast(h = 21)
+prev.Arima
+prev.Arima %>% autoplot()
+```
+
+```{r}
+accuracy(fit.naive, ts.test)
+accuracy(fit.seasonal_naive, ts.test)
+accuracy(fit.drift, ts.test)
+accuracy(fit.HWA, ts.test)
+accuracy(fit.HWM, ts.test)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

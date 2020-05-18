@@ -41,7 +41,7 @@ ts.test = window(ts.total, start = c(2018, 1))
 
 ## Análise exploratória
 
-O conjunto de dados possui a quantidade de fertilizantes entregues mensalmente em uma série temporal de 1998 a Setembro de 2019. O volume de fertilizantes na série a sazonal com frequência anual, atingindo o pico todos os anos nos meêses de Setembro e outubro, como é possível notar no gráfico a seguir. É de se notar que a série possui um aumento na amplitude da sazonalidade, indicando uma serie multiplicativa, e uma tendência de aumento no nível ao longo de toda sua duração dois fatos que podem ser melhor observados na decomposição da seérie posteriormente.
+O conjunto de dados possui a quantidade de fertilizantes entregues mensalmente em uma série temporal de 1998 a Setembro de 2019. O volume de fertilizantes na série é sazonal com frequência anual, atingindo o pico todos os anos nos mêses de Setembro e Outubro, como é possível notar no gráfico a seguir. É de se notar que a série possui um aumento na amplitude da sazonalidade, indicando uma serie multiplicativa, e uma tendência de aumento no nível ao longo de toda sua duração dois fatos que podem ser melhor observados na decomposição da série posteriormente.
 
 ```{r}
 autoplot(ts.total) + ggtitle("Fertilizantes Entregues ao mercado")+
@@ -50,7 +50,7 @@ autoplot(ts.total) + ggtitle("Fertilizantes Entregues ao mercado")+
 
 ## Transofrmações
 
-Realizando transformacoes BoxCox e Log utilizando a base natural dois resultados sao observados. Na transformacao Logaritimica a amplitude da serie diminui ao longo do tempo e na transformacao BoxCox a amplitude se manteve estavel ao longo do periodo indicando que a transformacao mais adequada para a seria é a BoxCox.
+Realizando transformacoes BoxCox e Logarítimica utilizando a base natural dois resultados são observados. Na transformação Logarítimica a amplitude da serie diminui ao longo do tempo e na transformacao BoxCox a amplitude se manteve estavel ao longo do periodo indicando que a transformação mais adequada para a séria é a BoxCox.
 
 ```{r}
 lts.total = log(ts.total)
@@ -64,7 +64,7 @@ cbind('Regular' = ts.total, 'Log' = lts.total, 'BoxCox' = boxts.total) %>%
 
 ## Seasonal Plot
 
-Com o seasonal Plot é possivel ver com maior claridade a sazonalidade da serie e a forma como o pico se concentra entre os meses de Agosto e Outubro e o momento de maior baixa entre os meses de Fevereiro e Abril.
+Com o Seasonal Plot é possivel ver com maior claridade a sazonalidade da serie e a forma como o pico se concentra entre os meses de Agosto e Outubro e o momento de maior baixa entre os meses de Fevereiro e Abril.
 
 ```{r}
 ggseasonplot(ts.total, year.labels = TRUE, year.label.left = TRUE)+
@@ -82,7 +82,7 @@ boxplot(ts.total~cycle(ts.total),xlab="meses", ylab = "Mil Toneladas" ,
 
 ## Lag Plot
 
-A visao do Lag Plot da serie corrabora com a visao inicial de que a serie possui uma sazonalidade de 12 meses, uma vez que o valor de lag de 12 meses apresenta os menores valores no lag plot.
+A visao do Lag Plot da serie corrabora com a visão inicial de que a serie possui uma sazonalidade de 12 meses, uma vez que o valor de lag para 12 meses apresenta os menores valores no lag plot.
 
 ```{r}
 gglagplot(ts.total)
@@ -90,7 +90,7 @@ gglagplot(ts.total)
 
 ## Auto Correlation Function (AFC) e Partial Auto Correlation Function (PACF)
 
-Observando a funcao de autocorrelacao da serie podemos observar que o maior valor de correlacao ocorre para um lag de 12 meses, reforcando a visao de que a serie possui uma sazonalidade de 12 meses.
+Observando a função de autocorrelação da série podemos observar que o maior valor de correlação ocorre para um lag de 12 meses, reforcando a visão de que a serie possui uma sazonalidade de 12 meses.
 
 ```{r}
 # ACF
@@ -131,7 +131,7 @@ ts.total %>%
   stl(t.window=13, s.window="periodic", robust=TRUE) %>%
   autoplot()
 ```
-Após a decomposicao da seire em sazonalidade, tendencia e residuos alguns pontos observados anteriormente ficam mais claros. O primeiro deles é o aumento de amplitude na série ao longo do tempo, o segundo é o aumento no nível da série ao longo do tempo, partindo de um patamar inferior a 1.500 e chegando a um patamar de 3.000 ao fim da série.
+Após a decomposicao da série em sazonalidade, tendencia e residuos alguns pontos observados anteriormente ficam mais claros. O primeiro deles é o aumento de amplitude na série ao longo do tempo, o segundo é o aumento no nível da série ao longo do tempo, partindo de um patamar inferior a 1.500 e chegando a um patamar de 3.000 ao fim da série.
 
 ```{r}
 # Metodo X11
@@ -176,6 +176,47 @@ ts.train = window(ts.total,end = c(2017,12))
 ts.test = window(ts.total, start = c(2018, 1))
 ```
 
+## Modelo
+
+Tanto de acordo com as métricas de erro simple como erro médio quadrado (RMSE) e com o critério de Akaike (AICc) o modelo mais adequado foi o modelo ARIMA com sazonalidade e por isso esse foi o modelo adotado. Também tiveram resultados muito positivos os modelos de regressão linear utilizando Dummies e o modelo de regressão utilizando a transformada de Fourier. Outro ponto a ser destacado é a alta correlação observada nos modelos que naão consideram sazonalidade como Suavização Exponencial, Holt e ARIMA não sazonal, indicando que esses modelos não foram capazes de captar adequadamente as variações na série temporal.
+
+![resultados](metricas.png)
+
+![AIC](AIC.png)
+
+
+```{r}
+arima.ts_s <- auto.arima(ts.train)
+summary(arima.ts_s)
+```
+
+### Previsões
+
+Alta aderência das previsões com baixo erro médio quadrado e pode ser visto visualmente também pela proximidade dos dados projetados e os dados realizados.
+
+```{r}
+
+autoplot(arima.ts_s %>% forecast(h = 21), series = "Previsão") +
+autolayer(ts.test, series = "Realizado") + 
+xlab("Data") +
+ylab("Consumo") +
+ggtitle("Fertilizantes") +
+guides(colour = guide_legend(title = "Série"))
+  
+
+```
+
+### Resíduos
+
+O teste de Portmanteau indica que os resíduos da série não possuem autocorreleação, fato que também é reforçado pelos baixos valores encontrados na função de autocorrelação.
+
+```{r}
+checkresiduals(arima.ts_s)
+```
+
+## Conclusão 
+
+Os métricas calculadas mostram que o modelo de ARIMA com sazonalida é adequado para realização de previsões na série de tempora utilizada. Além do modelo ARIMA outros modelos também se mostraram adequados para a série em questão, principalmente os modelos de regressão utilizando Dummies e o modelo de regressão utilizando a transformada de Fourier. Foi possível notar também que modelos que não levam a sazonalidade em concideração não foram adequados para modelar o problme dado a sazonalidade da série temporal utilizada.
 
 ## Anexo
 ```{r}
@@ -203,20 +244,6 @@ plot_forecast(fit.naive, 'Naive', ts.train, ts.test)
 checkresiduals(fit.naive)
 
 accuracy(fit.naive, ts.test)
-
-ts.test %>% tsCV(forecastfunction=naive, drift=TRUE, h=1) -> e
-# RMSE
-e^2 %>% mean(na.rm=TRUE) %>% sqrt()
-
-# Cross Validation para diferentes horizontes de previsão
-e <- tsCV(ts.total, forecastfunction=naive, h=15)
-
-# Compute the MSE values and remove missing values
-mse <- colMeans(e^2, na.rm = T)
-
-# Plot the MSE values against the forecast horizon
-data.frame(h = 1:15, MSE = mse) %>%
-  ggplot(aes(x = h, y = MSE)) + geom_point()
 
 summary(fit.naive)
 ```
@@ -364,14 +391,8 @@ AIC(fit.fourier)
 ```{r}
 arima.ts_ns <- auto.arima(ts.train, seasonal = FALSE)
 
-plot_forecast(arima.ts_ns, 'ARIMA', ts.train, ts.test, tslm = TRUE)
-
-ts.train %>%
-  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE) %>%
-  residuals() %>% ggtsdisplay()
-
-fit.Arima <- ts.train %>%
-  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE)
+prev.Arima <- arima.ts_ns %>% forecast(h = 21)
+prev.Arima %>% autoplot()
 
 checkresiduals(arima.ts_ns)
 
@@ -385,14 +406,8 @@ summary(arima.ts_ns)
 ```{r}
 arima.ts_s <- auto.arima(ts.train)
 
-plot_forecast(arima.ts_s, 'ARIMA Sazonal', ts.train, ts.test, tslm = TRUE)
-
-#ts.train %>%
-#  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE) %>%
-#  residuals() %>% ggtsdisplay()
-
-#fit.Arima <- ts.train %>%
-#  Arima(order=c(0,0,3), seasonal=c(0,1,2), include.drift = TRUE)
+prev.Arima <- arima.ts_s %>% forecast(h = 21)
+prev.Arima %>% autoplot()
 
 checkresiduals(arima.ts_s)
 
@@ -401,11 +416,6 @@ summary(arima.ts_s)
 accuracy(forecast(arima.ts_s), ts.test)
 ```
 
-
-```{r}
-prev.Arima <- fit.Arima %>% forecast(h = 21)
-prev.Arima %>% autoplot()
-```
 
 ```{r}
 accuracy_df = rbind(accuracy(fit.naive, ts.test)[2,],
